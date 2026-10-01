@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel do Facilitador</title>
+<style>
+  :root { --bg:#f6f5f2; --card:#fff; --ink:#1d1d1f; --muted:#6e6e73; --line:#e3e1dc;
+          --evelin:#d9480f; --angelica:#2f9e44; --accent:#2f5bea; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#151515; --card:#1f1f1f; --ink:#f2f2f2; --muted:#a1a1a6; --line:#333; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         background:var(--bg); color:var(--ink); }
+  main { max-width:1280px; margin:0 auto; padding:20px 16px; display:flex; flex-direction:column; gap:16px; }
+  h1 { margin:0; font-size:22px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; }
+  .linha { display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
+  button { font:inherit; font-weight:600; border:0; border-radius:10px; padding:10px 16px; cursor:pointer;
+           background:var(--accent); color:#fff; }
+  button.sec { background:transparent; color:var(--ink); border:1px solid var(--line); }
+  button.perigo { background:#c92a2a; }
+  input, select { font:inherit; padding:8px 10px; border-radius:8px; border:1px solid var(--line);
+                  background:var(--bg); color:var(--ink); }
+  .pill { display:inline-block; padding:4px 10px; border-radius:999px; font-size:13px; font-weight:700; color:#fff; }
+  .EVELIN { background:var(--evelin); } .ANGELICA { background:var(--angelica); }
+  .on { background:#2f9e44; } .off { background:#868e96; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width: 800px) { .grid2 { grid-template-columns:1fr; } }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); }
+  th { color:var(--muted); font-weight:600; font-size:13px; }
+  .num { font-size:28px; font-weight:800; }
+  .conv { display:flex; flex-direction:column; gap:8px; max-height:65vh; overflow-y:auto; }
+  .msg { padding:8px 12px; border-radius:12px; white-space:pre-wrap; max-width:90%; font-size:17px; }
+  .ALUNO { align-self:flex-end; background:var(--accent); color:#fff; }
+  .ASSISTENTE { align-self:flex-start; background:var(--bg); border:1px solid var(--line); }
+  .bloq { font-size:12px; color:#c92a2a; margin-top:4px; }
+  .muted { color:var(--muted); }
+  .painel-titulo { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="linha" style="justify-content:space-between">
+    <h1>Painel do Facilitador</h1>
+    <div class="linha">
+      <input id="chave" type="password" placeholder="Chave do painel">
+      <button class="sec" id="btn-chave">Usar chave</button>
+    </div>
+  </div>
+  <div class="erro muted" id="erro"></div>
+
+  <section class="card linha">
+    <div>Rodada: <span class="pill" id="st-rodada">—</span></div>
+    <button id="btn-rodada">Fechar rodada</button>
+    <div>Revelação: <span class="pill" id="st-rev">—</span></div>
+    <button id="btn-rev">Revelar nomes</button>
+    <span style="flex:1"></span>
+    <button class="perigo" id="btn-reiniciar">Apagar sessões (ensaio)</button>
+  </section>
+
+  <section class="grid2" id="resumo"></section>
+
+  <section class="card">
+    <div class="painel-titulo"><strong>Alunos</strong><span class="muted" id="total"></span></div>
+    <table>
+      <thead><tr><th>Aluno</th><th>Código</th><th>Assistente</th><th>Mensagens</th><th>Bloqueios</th><th></th></tr></thead>
+      <tbody id="alunos"></tbody>
+    </table>
+  </section>
+
+  <section class="grid2">
+    <div class="card"><div class="painel-titulo"><strong id="tit-esq">Conversa (esquerda)</strong>
+      <select id="sel-esq"></select></div><div class="conv" id="conv-esq"></div></div>
+    <div class="card"><div class="painel-titulo"><strong id="tit-dir">Conversa (direita)</strong>
+      <select id="sel-dir"></select></div><div class="conv" id="conv-dir"></div></div>
+  </section>
+</main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  let chave = "";
+  try { chave = sessionStorage.getItem("adminKey") || ""; } catch (e) {}
+  $("chave").value = chave;
+  let estado = null;
+  let alunos = [];
+
+  async function api(caminho, opcoes = {}) {
+    const r = await fetch("/api/admin" + caminho, {
+      ...opcoes,
+      headers: { "Content-Type": "application/json", "X-Admin-Key": chave, ...(opcoes.headers || {}) }
+    });
+    const dados = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(dados.erro || ("Erro " + r.status));
+    return dados;
+  }
+
+  $("btn-chave").onclick = () => {
+    chave = $("chave").value.trim();
+    try { sessionStorage.setItem("adminKey", chave); } catch (e) {}
+    atualizar();
+  };
+
+  $("btn-rodada").onclick = async () => {
+    await api("/rodada", { method: "POST", body: JSON.stringify({ valor: !estado.aberta }) });
+    atualizar();
+  };
+  $("btn-rev").onclick = async () => {
+    await api("/revelar", { method: "POST", body: JSON.stringify({ valor: !estado.revelada }) });
+    atualizar();
+  };
+  $("btn-reiniciar").onclick = async () => {
+    if ($("btn-reiniciar").dataset.confirmar !== "1") {
+      $("btn-reiniciar").dataset.confirmar = "1";
+      $("btn-reiniciar").textContent = "Clique de novo para confirmar";
+      setTimeout(() => { $("btn-reiniciar").dataset.confirmar = ""; $("btn-reiniciar").textContent = "Apagar sessões (ensaio)"; }, 4000);
+      return;
+    }
+    await api("/reiniciar", { method: "POST" });
+    $("btn-reiniciar").dataset.confirmar = ""; $("btn-reiniciar").textContent = "Apagar sessões (ensaio)";
+    $("conv-esq").innerHTML = ""; $("conv-dir").innerHTML = "";
+    atualizar();
+  };
+
+  function preencherSelect(sel, lado) {
+    const atual = sel.value;
+    sel.innerHTML = "<option value=''>Escolha um aluno</option>";
+    alunos.forEach(a => {
+      const o = document.createElement("option");
+      o.value = a.id;
+      o.textContent = a.id + " · " + (a.persona === "EVELIN" ? "EVELin" : "ANGELica") + " · " + a.mensagens + " msg";
+      sel.appendChild(o);
+    });
+    sel.value = atual;
+  }
+
+  async function mostrarConversa(id, destino, titulo) {
+    const alvo = $(destino);
+    if (!id) { alvo.innerHTML = ""; return; }
+    const c = await api("/conversas/" + encodeURIComponent(id));
+    const rolarAoFim = alvo.scrollTop + alvo.clientHeight >= alvo.scrollHeight - 20;
+    alvo.innerHTML = "";
+    $(titulo).innerHTML = "";
+    const pill = document.createElement("span");
+    pill.className = "pill " + c.persona; pill.textContent = c.nome;
+    $(titulo).append(c.id + " · código " + c.codigo + " ", pill);
+    c.turnos.forEach(t => {
+      const d = document.createElement("div");
+      d.className = "msg " + t.papel;
+      d.textContent = t.texto;
+      if (t.bloqueio) {
+        const b = document.createElement("div");
+        b.className = "bloq"; b.textContent = "Filtro: " + t.bloqueio;
+        d.appendChild(b);
+      }
+      alvo.appendChild(d);
+    });
+    if (rolarAoFim) alvo.scrollTop = alvo.scrollHeight;
+  }
+
+  $("sel-esq").onchange = () => mostrarConversa($("sel-esq").value, "conv-esq", "tit-esq");
+  $("sel-dir").onchange = () => mostrarConversa($("sel-dir").value, "conv-dir", "tit-dir");
+
+  async function atualizar() {
+    try {
+      estado = await api("/painel");
+      $("erro").textContent = "";
+    } catch (e) {
+      $("erro").textContent = e.message;
+      return;
+    }
+    alunos = estado.alunos;
+    $("st-rodada").textContent = estado.aberta ? "aberta" : "fechada";
+    $("st-rodada").className = "pill " + (estado.aberta ? "on" : "off");
+    $("btn-rodada").textContent = estado.aberta ? "Fechar rodada" : "Reabrir rodada";
+    $("st-rev").textContent = estado.revelada ? "ligada" : "desligada";
+    $("st-rev").className = "pill " + (estado.revelada ? "on" : "off");
+    $("btn-rev").textContent = estado.revelada ? "Esconder nomes" : "Revelar nomes";
+
+    $("resumo").innerHTML = "";
+    estado.personas.forEach(p => {
+      const card = document.createElement("div");
+      card.className = "card";
+      const media = p.alunos ? (p.mensagens / p.alunos).toFixed(1) : "0";
+      card.innerHTML = "<div class='painel-titulo'><span class='pill " + p.persona + "'></span></div>"
+        + "<div class='linha' style='gap:32px'>"
+        + "<div><div class='num'></div><div class='muted'>alunos</div></div>"
+        + "<div><div class='num'></div><div class='muted'>mensagens</div></div>"
+        + "<div><div class='num'></div><div class='muted'>média por aluno</div></div>"
+        + "<div><div class='num'></div><div class='muted'>respostas filtradas</div></div></div>";
+      card.querySelector(".pill").textContent = p.nome;
+      const nums = card.querySelectorAll(".num");
+      nums[0].textContent = p.alunos; nums[1].textContent = p.mensagens;
+      nums[2].textContent = media; nums[3].textContent = p.bloqueios;
+      $("resumo").appendChild(card);
+    });
+
+    $("total").textContent = alunos.length + " conectados · " + estado.chamadasEmAndamento + " chamadas à OpenAI em andamento";
+    const tbody = $("alunos");
+    tbody.innerHTML = "";
+    alunos.forEach(a => {
+      const tr = document.createElement("tr");
+      const nome = a.persona === "EVELIN" ? "EVELin" : "ANGELica";
+      tr.innerHTML = "<td></td><td></td><td><span class='pill " + a.persona + "'></span></td><td></td><td></td>"
+        + "<td><button class='sec' data-lado='esq'>◀ Esquerda</button> <button class='sec' data-lado='dir'>Direita ▶</button></td>";
+      const tds = tr.querySelectorAll("td");
+      tds[0].textContent = a.id; tds[1].textContent = a.codigo;
+      tds[2].querySelector(".pill").textContent = nome;
+      tds[3].textContent = a.mensagens; tds[4].textContent = a.bloqueios;
+      tr.querySelectorAll("button").forEach(b => b.onclick = () => {
+        const sel = $("sel-" + b.dataset.lado);
+        sel.value = a.id; sel.onchange();
+      });
+      tbody.appendChild(tr);
+    });
+    preencherSelect($("sel-esq")); preencherSelect($("sel-dir"));
+    if ($("sel-esq").value) mostrarConversa($("sel-esq").value, "conv-esq", "tit-esq");
+    if ($("sel-dir").value) mostrarConversa($("sel-dir").value, "conv-dir", "tit-dir");
+  }
+
+  if (chave) atualizar();
+  setInterval(() => { if (chave) atualizar(); }, 5000);
+</script>
+</body>
+</html>

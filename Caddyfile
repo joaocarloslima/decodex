@@ -1,0 +1,6 @@
+# Com domínio (ex.: workshop.seudominio.com.br), o Caddy emite o HTTPS sozinho (Let's Encrypt).
+# Sem domínio, use DOMINIO=:80 no .env e acesse por http://IP-DA-VPS
+{$DOMINIO} {
+	encode gzip
+	reverse_proxy app:8080
+}

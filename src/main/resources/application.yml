@@ -1,0 +1,49 @@
+server:
+  port: 8080
+  # Atrás do Caddy/Nginx: usa o X-Forwarded-For para saber o IP real do aluno.
+  forward-headers-strategy: native
+  tomcat:
+    threads:
+      max: 200
+
+spring:
+  threads:
+    virtual:
+      enabled: true
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY}
+      chat:
+        options:
+          # Use um modelo que aceite temperatura (a família gpt-5 só aceita o valor padrão).
+          model: ${OPENAI_MODEL:gpt-4.1-mini}
+          temperature: 0.3
+
+workshop:
+  # Chave do painel do facilitador (/admin.html). Se ficar vazia, uma chave aleatória é gerada e impressa no log.
+  admin-key: ${ADMIN_KEY:}
+
+  # Dois códigos: um para cada grupo. Os códigos parecem aleatórios de propósito,
+  # para nada indicar que existem duas assistentes.
+  acessos:
+    - { codigo: "${CODIGO_EVEL:K7QR}", persona: EVELIN }
+    - { codigo: "${CODIGO_ANGEL:M4XT}", persona: ANGELICA }
+
+  # Tempo mínimo de resposta (ms), igual para as duas personas, para ninguém perceber diferença de velocidade.
+  tempo-minimo-resposta-ms: 2000
+  # Tempo máximo esperando a OpenAI antes de devolver erro ao aluno.
+  timeout-resposta-segundos: 45
+  # Chamadas simultâneas à OpenAI. As demais esperam na fila (sem travar o servidor).
+  max-chamadas-simultaneas: 30
+  max-mensagens-por-aluno: 40
+  max-caracteres-por-mensagem: 400
+  # Limite de sessões abertas (protege o seu crédito na OpenAI se o link vazar).
+  max-sessoes: 80
+  # Tentativas de código erradas por IP, por minuto. A turma toda pode sair pelo mesmo IP do Wi-Fi, então não deixe baixo demais.
+  max-tentativas-login-por-minuto: 30
+
+  # ANGELica só pode dizer "teclado" depois que o aluno enviar este número de mensagens (ou falar "teclado" antes).
+  teclado-liberado-apos: 5
+
+  # Arquivo onde todas as conversas são gravadas (uma linha JSON por mensagem).
+  arquivo-log: ${ARQUIVO_LOG:logs/conversas.jsonl}
